@@ -7,6 +7,8 @@ fn main() -> std::io::Result<()>{
     let bytes = base64::decode_config(data,base64::URL_SAFE).unwrap();
     let c: &[u8] = &bytes; // c: &[u8]
     let quote = sgx_quote::Quote::parse(c).unwrap();
+
+
     println!("cpu_svn: {}",hex::encode(quote.isv_report.cpu_svn));
     println!("miscselect: {}",quote.isv_report.miscselect);
     println!("attributes: {}",hex::encode(quote.isv_report.attributes));
