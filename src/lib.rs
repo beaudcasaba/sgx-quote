@@ -24,6 +24,10 @@ impl<'a> Quote<'a> {
     pub fn signed_message(&self) -> &[u8] {
         &self.signed_message
     }
+
+    pub fn parse_header(quote_bytes: &'a [u8]) -> Result<parsers::HeaderExt, Err<(&'a [u8], ErrorKind)>> {
+        crate::parsers::parse_header_ext(quote_bytes).map(|qp| qp.1)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -29,13 +29,13 @@ pub(crate) fn parse_quote(i: &[u8]) -> IResult<&[u8], Quote, (&[u8], ErrorKind)>
     )
 }
 
-struct HeaderExt<'a> {
+pub struct HeaderExt<'a> {
     header: Header<'a>,
     ak_ty: u16,
 }
 
 named! {
-    parse_header_ext<HeaderExt>,
+    pub parse_header_ext<HeaderExt>,
     do_parse!(
         version:              le_u16    >>
         attestation_key_type: le_u16    >>
