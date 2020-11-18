@@ -11,12 +11,16 @@ fn main() -> std::io::Result<()>{
     
     println!("OLD SIZES");
     verify_size(bytes);
-    let new_bytes = &replace_cert_data(bytes);
+    //let new_bytes = &replace_cert_data(bytes);
+    let new_bytes = &replace_user_data(bytes);
     println!("\nNEW SIZES");
     verify_size(new_bytes);
 
     let quote = sgx_quote::Quote::parse(new_bytes).unwrap();
     display_report(quote);
+
+    let data = base64::encode_config(new_bytes,base64::URL_SAFE);
+    println!("new data: {}",data);
     Ok(())
 }
 
@@ -58,13 +62,13 @@ fn display_report(quote: sgx_quote::Quote){
             }
     };
 }
-// version:              le_u16    >>
-// attestation_key_type: le_u16    >>
-// _reserved_1:          take!(4)  >>
-// qe_svn:               le_u16    >>
-// pce_svn:              le_u16    >>
-// qe_vendor_id:         take!(16) >>
-// user_data:            take!(20) >>
+// version:              le_u16    >> 0
+// attestation_key_type: le_u16    >> 2
+// _reserved_1:          take!(4)  >> 4
+// qe_svn:               le_u16    >> 8
+// pce_svn:              le_u16    >> 10
+// qe_vendor_id:         take!(16) >> 12
+// user_data:            take!(20) >> 28
 
 
 // cpu_svn:     take!(16) >>  48
@@ -119,6 +123,13 @@ fn get_auth_data_size(raw: &[u8]) -> usize{
     return usize::from(u16::from_le_bytes(raw[(1012)..(1012+2)].try_into().expect("bad")));
 }
 
+fn replace_user_data(raw: &[u8]) -> Vec<u8>{
+    let new_data: &[u8;20] = & [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
+    let pre = &raw[0 .. 28];
+    let post = &raw[48 ..];
+    let new = [pre,new_data,post].concat();
+    return replace_signature_size(&new);
+}
 
 fn replace_cert_data(raw: &[u8]) -> Vec<u8>{
     //let new_data: &[u8;4] = &[ 1 , 1 , 1 ,1];
