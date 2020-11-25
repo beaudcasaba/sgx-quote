@@ -1,29 +1,65 @@
 use std::fs;
+use std::str;
 extern crate base64;
 extern crate hex;
+extern crate reqwest;
 use std::convert::TryInto;
+use serde_json::json;
+use std::time::SystemTime;
 
 extern crate nom;
 
+//const SIZE :usize = 1000;
+
 fn main() -> std::io::Result<()>{
-    let bytes = &get_bytes_from_file(&"./fixtures/sgx_quote.txt");
+    let bytes = &get_bytes_from_file(&"./fixtures/sgx_quote2.txt");
     
     
-    println!("OLD SIZES");
-    verify_size(bytes);
+    //println!("OLD SIZES");
+    //verify_size(bytes);
     //let new_bytes = &replace_cert_data(bytes);
-    let new_bytes = &replace_user_data(bytes);
-    println!("\nNEW SIZES");
-    verify_size(new_bytes);
+    //let new_bytes = &replace_user_data(bytes);
+    //println!("\nNEW SIZES");
+    //verify_size(new_bytes);
 
-    let quote = sgx_quote::Quote::parse(new_bytes).unwrap();
-    display_report(quote);
+    let quote = sgx_quote::Quote::parse(bytes).unwrap();
+    //display_report(quote);
 
-    let data = base64::encode_config(new_bytes,base64::URL_SAFE);
-    println!("new data: {}",data);
+    let new_bytes = &replace_cert_data_2(bytes);
+    //let new_bytes = &obfuscate_cert_data(bytes);
+    //let new_bytes = &set_cert_data_size(bytes,0);
+    //let new_bytes_2 = &replace_signature_size(new_bytes);
+    let raw_quote = base64::encode_config(new_bytes,base64::URL_SAFE);
+    //println!("new data: {}",raw_quote);
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(None)
+        .build().unwrap();
+    send_request(client,raw_quote);
     Ok(())
 }
 
+fn send_request(client: reqwest::blocking::Client,raw_quote: String){
+    let json = json!(
+        {
+            "quote":raw_quote,
+            "runtimeData": 
+            {
+                "data":"", // include collateral
+                "dataType":"Binary"
+            }
+        });
+    let now = SystemTime::now();
+    println!("sending...");
+
+    let res = client.post("https://czmmc2ocqnkqg.eus.attest.azure.net/attest/SgxEnclave?api-version=2020-10-01&casaba=maxsizepayload")
+        .bearer_auth("") // include jwt
+        .json(&json)
+        .send().unwrap();
+    println!("{:?}",SystemTime::now().duration_since(now).unwrap());
+    println!("{:?}",res.status());
+    println!("{:?}",res.text())
+}
 fn get_bytes_from_file(fname: &str) -> Vec<u8>{
     let data = fs::read_to_string(fname).expect("Unable to read file");
     let bytes = base64::decode_config(data,base64::URL_SAFE).unwrap();
@@ -124,22 +160,66 @@ fn get_auth_data_size(raw: &[u8]) -> usize{
 }
 
 fn replace_user_data(raw: &[u8]) -> Vec<u8>{
-    let new_data: &[u8;20] = & [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
+    let new_data: &[u8;20] = &[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
     let pre = &raw[0 .. 28];
     let post = &raw[48 ..];
     let new = [pre,new_data,post].concat();
     return replace_signature_size(&new);
 }
+fn obfuscate_cert_data(raw: &[u8]) -> Vec<u8>{
+    
+    let auth_data_size = get_auth_data_size(raw);
+    let new_data = &raw[1020+auth_data_size+20..1020+auth_data_size+40];
+    let pre = &raw[0..1020+auth_data_size+20];
+    let post = &raw[1020+auth_data_size+20..];
+    let new = [pre,new_data,post].concat();
 
-fn replace_cert_data(raw: &[u8]) -> Vec<u8>{
-    //let new_data: &[u8;4] = &[ 1 , 1 , 1 ,1];
-    let new_data = &get_bytes_from_file("./fixtures/fake_cert.txt");
+    return replace_signature_size(&replace_cert_data_size(&new));
+}
+fn replace_cert_data_2(raw: &[u8]) -> Vec<u8>{
+    const SIZE: usize = 100000;
+    let new_data: &[u8;SIZE] = &[ 41 ; SIZE];
+    //let new_data = &get_bytes_from_file("./fixtures/fake_cert.txt");
 
     let auth_data_size = get_auth_data_size(raw);
     let pre = &raw[0 .. (1016 +auth_data_size)];
     let new_size = &((new_data.len()) as u32).to_le_bytes();
     let new = [pre,new_size,new_data].concat();
     return replace_signature_size(&new);
+}
+fn duplicate_cert_data(){
+    
+}
+fn replace_cert_data(raw: &[u8]) -> Vec<u8>{
+    const SIZE: usize = 100000;
+    let begin = "-----BEGIN CERTIFICATE----- ";
+    let end = "-----END CERTIFICATE-----";
+    let middle: &[u8;SIZE] = &[ 41 ; SIZE];
+    let middle_str = str::from_utf8(middle).unwrap();
+    let new_data_str = [begin,middle_str,end].join("\n");
+    //println!("{}",new_data_str);
+    let new_data = new_data_str.as_bytes();
+    //let new_data = &get_bytes_from_file("./fixtures/fake_cert.txt");
+
+    let auth_data_size = get_auth_data_size(raw);
+    let pre = &raw[0 .. (1016 +auth_data_size)];
+    let new_size = &((new_data.len()) as u32).to_le_bytes();
+    let new = [pre,new_size,new_data].concat();
+    return replace_signature_size(&new);
+}
+fn set_cert_data_size(raw: &[u8], size: u32) -> Vec<u8>{
+    let auth_data_size = get_auth_data_size(raw);
+    let pre = &raw[0..1016+auth_data_size];
+    let post = &raw[1020+auth_data_size..];
+    let size_bytes = &size.to_le_bytes();
+    return [pre,size_bytes,post].concat();
+}
+fn replace_cert_data_size(raw: &[u8]) -> Vec<u8>{
+    let auth_data_size = get_auth_data_size(raw);
+    let pre = &raw[0..1016+auth_data_size];
+    let post = &raw[1020+auth_data_size..];
+    let size = &((post.len()) as u32).to_le_bytes();
+    return [pre,size,post].concat();
 }
 fn replace_signature_size(raw: &[u8]) -> Vec<u8>{
     let pre = &raw[0..432];
