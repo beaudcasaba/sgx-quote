@@ -24,6 +24,12 @@ fn main() -> std::io::Result<()>{
 
     //send_request(&client,bytes,"control");
 
+    let new_bytes = &replace_report_data(bytes);
+    println!("{}",encode_bytes(new_bytes));
+    let quote = sgx_quote::Quote::parse(new_bytes).unwrap();
+    display_report(quote);
+    send_request(&client,new_bytes,"junkreportdata");
+
     // let new_bytes = &set_cert_data_size(bytes,u32::MIN);
     // send_request(&client,new_bytes,"minsize");
 
@@ -41,11 +47,11 @@ fn main() -> std::io::Result<()>{
     // let _quote = sgx_quote::Quote::parse(new_bytes).unwrap();
     // send_request(&client,new_bytes,"totaljunkincertdata");
 
-    let new_bytes = &duplicate_cert_data(bytes,1000);
-    for i in 0..100{
-        let tag = &format!("duplicatecerts{}",i);
-        send_request(&client,new_bytes,tag);
-    }
+    // let new_bytes = &duplicate_cert_data(bytes,1000);
+    // for i in 0..100{
+    //     let tag = &format!("duplicatecerts{}",i);
+    //     send_request(&client,new_bytes,tag);
+    // }
     
 
     // let new_bytes = &duplicate_cert_data(bytes,1000);
@@ -72,9 +78,11 @@ fn main() -> std::io::Result<()>{
     
     Ok(())
 }
-
+fn encode_bytes(bytes: &[u8]) -> String{
+    return base64::encode_config(bytes,base64::URL_SAFE);
+}
 fn send_request(client: &reqwest::blocking::Client,bytes: &[u8],tag: &str){
-    let raw_quote = base64::encode_config(bytes,base64::URL_SAFE);
+    let raw_quote = encode_bytes(bytes);
     let json = json!(
         {
             "quote":raw_quote,
@@ -153,7 +161,7 @@ fn display_report(quote: sgx_quote::Quote){
 // isv_prod_id: le_u16    >>
 // isv_svn:     le_u16    >>
 // _reserved_4: take!(60) >>
-// report_data: take!(64) >>
+// report_data: take!(64) >> 368
 
 // signature size: u32    >> 432
 
@@ -197,7 +205,14 @@ fn get_cert_data_size(raw: &[u8]) -> u32{
     let auth_data_size = get_auth_data_size(raw);
     return u32::from_le_bytes(raw[(1016+auth_data_size)..(1016+auth_data_size+4)].try_into().expect("bad"));
 }
-
+fn replace_report_data(raw: &[u8]) -> Vec<u8>{
+    const SIZE: usize = 64;
+    let new_data: &[u8;SIZE] = &[ 41 ; SIZE];
+    let pre = &raw[0 .. 368];
+    let post = &raw[432 ..];
+    let new = [pre,new_data,post].concat();
+    return new;
+}
 fn replace_user_data(raw: &[u8]) -> Vec<u8>{
     let new_data: &[u8;20] = &[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1];
     let pre = &raw[0 .. 28];
