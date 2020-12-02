@@ -1,146 +1,24 @@
 use std::fs;
 use std::str;
-extern crate base64;
-extern crate hex;
-extern crate reqwest;
 use std::convert::TryInto;
 use serde_json::json;
 use std::time::SystemTime;
 
+extern crate base64;
+extern crate hex;
+extern crate reqwest;
 extern crate nom;
 
+// the below constants MUST be filled in
 const JWT: &str = "";
+// host, i.e. sharedcus.cus.attest.azure.net
 const HOST: &str = "";
+// quote to base off of
 const ORIGINAL_QUOTE: &str = "";
+// Collateral, aka runtime data
 const COLLATERAL: &str = "";
 
-fn main() -> std::io::Result<()>{
-
-    let bytes = &base64::decode_config(ORIGINAL_QUOTE,base64::URL_SAFE).unwrap();
-
-    let client = reqwest::blocking::Client::builder()
-        .timeout(None)
-        .build().unwrap();
-
-    //send_request(&client,bytes,"control");
-
-    let new_bytes = &replace_report_data(bytes);
-    println!("{}",encode_bytes(new_bytes));
-    let quote = sgx_quote::Quote::parse(new_bytes).unwrap();
-    display_report(quote);
-    send_request(&client,new_bytes,"junkreportdata");
-
-    // let new_bytes = &set_cert_data_size(bytes,u32::MIN);
-    // send_request(&client,new_bytes,"minsize");
-
-    // let new_bytes = &set_cert_data_size(bytes,u32::MAX);
-    // send_request(&client,new_bytes,"maxsize");
-
-    // let new_bytes = &set_cert_data_size(bytes,0);
-    // send_request(&client,new_bytes,"zerosize");
-
-    // let new_bytes = &replace_cert_data_with_pem_wrapped_junk(bytes);
-    // let _quote = sgx_quote::Quote::parse(new_bytes).unwrap();
-    // send_request(&client,new_bytes,"pemwithjunkincertdata");
-
-    // let new_bytes = &replace_cert_data_with_junk(bytes);
-    // let _quote = sgx_quote::Quote::parse(new_bytes).unwrap();
-    // send_request(&client,new_bytes,"totaljunkincertdata");
-
-    // let new_bytes = &duplicate_cert_data(bytes,1000);
-    // for i in 0..100{
-    //     let tag = &format!("duplicatecerts{}",i);
-    //     send_request(&client,new_bytes,tag);
-    // }
-    
-
-    // let new_bytes = &duplicate_cert_data(bytes,1000);
-    // send_request(&client,new_bytes,"extraduplicatedcertdata");
-
-    // let new_bytes = &duplicate_cert_data(bytes,1000);
-    // verify_size(new_bytes);
-    // let cert_data_size = get_cert_data_size(new_bytes);
-    // let new_bytes = &set_cert_data_size(new_bytes,cert_data_size+1);
-    // send_request(&client,new_bytes,"extraduplicatedcertdataoffbyone");
-
-    // let new_bytes = &duplicate_cert_data(bytes,1000);
-    // verify_size(new_bytes);
-    // let cert_data_size = get_cert_data_size(new_bytes);
-    // let new_bytes = &set_cert_data_size(new_bytes,cert_data_size-1);
-    // send_request(&client,new_bytes,"extraduplicatedcertdataoffbyoneminus");
-
-    // let new_bytes = &obfuscate_cert_data(bytes);
-    // let _quote = sgx_quote::Quote::parse(new_bytes).unwrap();
-    // send_request(&client,new_bytes,"obfuscatedcertdata");
-
-    //Utility
-    //display_report(quote);
-    
-    Ok(())
-}
-fn encode_bytes(bytes: &[u8]) -> String{
-    return base64::encode_config(bytes,base64::URL_SAFE);
-}
-fn send_request(client: &reqwest::blocking::Client,bytes: &[u8],tag: &str){
-    let raw_quote = encode_bytes(bytes);
-    let json = json!(
-        {
-            "quote":raw_quote,
-            "runtimeData": 
-            {
-                "data": COLLATERAL,
-                "dataType":"Binary"
-            }
-        });
-    let now = SystemTime::now();
-    println!("sending {}...",tag);
-    let uri: &str = &format!("https://{0}/attest/SgxEnclave?api-version=2020-10-01&casaba={1}",HOST,tag);
-    let res = client.post(uri)
-        .bearer_auth(JWT) 
-        .json(&json)
-        .send().unwrap();
-    println!("{:?}",SystemTime::now().duration_since(now).unwrap());
-    println!("{:?}",res.status());
-    println!("{:?}",res.text())
-}
-fn get_bytes_from_file(fname: &str) -> Vec<u8>{
-    let data = fs::read_to_string(fname).expect("Unable to read file");
-    let bytes = base64::decode_config(ORIGINAL_QUOTE,base64::URL_SAFE).unwrap();
-    return bytes;
-}
-fn display_report(quote: sgx_quote::Quote){
-    println!("cpu_svn: {}",hex::encode(quote.isv_report.cpu_svn));
-    println!("miscselect: {}",quote.isv_report.miscselect);
-    println!("attributes: {}",hex::encode(quote.isv_report.attributes));
-    println!("mrenclave: {}",hex::encode(quote.isv_report.mrenclave));
-    println!("mrsigner: {}",hex::encode(quote.isv_report.mrsigner));
-    println!("isv_prod_id: {}",quote.isv_report.isv_prod_id);
-    println!("isv_svn: {}",quote.isv_report.isv_svn);
-    println!("report_data: {}",hex::encode(quote.isv_report.report_data));
-    
-    match quote.signature {
-        sgx_quote::Signature::EcdsaP256
-        {   
-            qe_authentication_data: auth_data, 
-            isv_report_signature: _,
-            attestation_key: _,
-            qe_report: _,
-            qe_report_signature: _,
-            qe_certification_data: cert_data
-        } =>   
-            {
-                println!("auth_data: {}",hex::encode(auth_data));
-                match cert_data
-                {
-                    sgx_quote::QeCertificationData::CertChain(data) => 
-                    {
-                        println!("cert_data: {}",hex::encode(data));
-                    },
-                    _ => { println!("unhandled type!!")}
-                };
-            }
-    };
-}
+//QUOTE STRUCTURE
 // version:              le_u16    >> 0
 // attestation_key_type: le_u16    >> 2
 // _reserved_1:          take!(4)  >> 4
@@ -179,6 +57,134 @@ fn display_report(quote: sgx_quote::Quote){
 
 // >> 1020 + auth_data_size + cert_data_size
 
+fn main() -> std::io::Result<()>{
+
+    let bytes = &base64::decode_config(ORIGINAL_QUOTE,base64::URL_SAFE).unwrap();
+
+    let client = reqwest::blocking::Client::builder()
+        .timeout(None)
+        .build().unwrap();
+
+    // control
+    send_request(&client,bytes,"control");
+
+    // all )'s in the report data field
+    let new_bytes = &replace_report_data(bytes);
+    send_request(&client,new_bytes,"junkreportdata");
+
+    //same quote, just set cert data size to min
+    let new_bytes = &set_cert_data_size(bytes,u32::MIN);
+    send_request(&client,new_bytes,"minsize");
+
+    //same quote, just set cert data size to max
+    let new_bytes = &set_cert_data_size(bytes,u32::MAX);
+    send_request(&client,new_bytes,"maxsize");
+
+    //same quote, just set cert data size to zero
+    let new_bytes = &set_cert_data_size(bytes,0);
+    send_request(&client,new_bytes,"zerosize");
+
+    //all )'s in the cert data field, wrapped in BEGIN-CERTIFICATE / END-CERTIFICATE
+    let new_bytes = &replace_cert_data_with_pem_wrapped_junk(bytes);
+    let _quote = sgx_quote::Quote::parse(new_bytes).unwrap();
+    send_request(&client,new_bytes,"pemwithjunkincertdata");
+
+    //all )'s in the cert data field
+    let new_bytes = &replace_cert_data_with_junk(bytes);
+    send_request(&client,new_bytes,"totaljunkincertdata");
+
+    //add 100 copies of the cert data field to the cert data field, and send 100 times
+    let new_bytes = &duplicate_cert_data(bytes,100);
+    for i in 0..100{
+        let tag = &format!("duplicatecerts{}",i);
+        send_request(&client,new_bytes,tag);
+    }
+    
+    //add 5000 copies of the cert data field to the cert data field
+    let new_bytes = &duplicate_cert_data(bytes,5000);
+    send_request(&client,new_bytes,"extraduplicatedcertdata");
+
+    //add 1000 copies of the cert data field to the cert data field, and increase the size by one
+    let new_bytes = &duplicate_cert_data(bytes,1000);
+    let cert_data_size = get_cert_data_size(new_bytes);
+    let new_bytes = &set_cert_data_size(new_bytes,cert_data_size+1);
+    send_request(&client,new_bytes,"extraduplicatedcertdataoffbyone");
+
+    //add 1000 copies of the cert data field to the cert data field, and decrease the size by one
+    let new_bytes = &duplicate_cert_data(bytes,1000);
+    let cert_data_size = get_cert_data_size(new_bytes);
+    let new_bytes = &set_cert_data_size(new_bytes,cert_data_size-1);
+    send_request(&client,new_bytes,"extraduplicatedcertdataoffbyoneminus");
+
+    //replace the middle of the cert data field with junk
+    let new_bytes = &obfuscate_cert_data(bytes);
+    send_request(&client,new_bytes,"obfuscatedcertdata");
+    
+    Ok(())
+}
+fn encode_bytes(bytes: &[u8]) -> String{
+    return base64::encode_config(bytes,base64::URL_SAFE);
+}
+fn send_request(client: &reqwest::blocking::Client,bytes: &[u8],tag: &str){
+    let raw_quote = encode_bytes(bytes);
+    let json = json!(
+        {
+            "quote":raw_quote,
+            "runtimeData": 
+            {
+                "data": COLLATERAL,
+                "dataType":"Binary"
+            }
+        });
+    let now = SystemTime::now();
+    println!("sending {}...",tag);
+    let uri: &str = &format!("https://{0}/attest/SgxEnclave?api-version=2020-10-01&casaba={1}",HOST,tag);
+    let res = client.post(uri)
+        .bearer_auth(JWT) 
+        .json(&json)
+        .send().unwrap();
+    println!("{:?}",SystemTime::now().duration_since(now).unwrap());
+    println!("{:?}",res.status());
+    println!("{:?}",res.text())
+}
+fn get_bytes_from_file(fname: &str) -> Vec<u8>{
+    let data = fs::read_to_string(fname).expect("Unable to read file");
+    let bytes = base64::decode_config(data,base64::URL_SAFE).unwrap();
+    return bytes;
+}
+fn display_report(quote: sgx_quote::Quote){
+    println!("cpu_svn: {}",hex::encode(quote.isv_report.cpu_svn));
+    println!("miscselect: {}",quote.isv_report.miscselect);
+    println!("attributes: {}",hex::encode(quote.isv_report.attributes));
+    println!("mrenclave: {}",hex::encode(quote.isv_report.mrenclave));
+    println!("mrsigner: {}",hex::encode(quote.isv_report.mrsigner));
+    println!("isv_prod_id: {}",quote.isv_report.isv_prod_id);
+    println!("isv_svn: {}",quote.isv_report.isv_svn);
+    println!("report_data: {}",hex::encode(quote.isv_report.report_data));
+    
+    match quote.signature {
+        sgx_quote::Signature::EcdsaP256
+        {   
+            qe_authentication_data: auth_data, 
+            isv_report_signature: _,
+            attestation_key: _,
+            qe_report: _,
+            qe_report_signature: _,
+            qe_certification_data: cert_data
+        } =>   
+            {
+                println!("auth_data: {}",hex::encode(auth_data));
+                match cert_data
+                {
+                    sgx_quote::QeCertificationData::CertChain(data) => 
+                    {
+                        println!("cert_data: {}",hex::encode(data));
+                    },
+                    _ => { println!("unhandled type!!")}
+                };
+            }
+    };
+}
 fn verify_size(raw: &[u8]){
 
     println!("total size: {}",raw.len());
@@ -234,7 +240,7 @@ fn replace_cert_data_with_junk(raw: &[u8]) -> Vec<u8>{
     const SIZE: usize = 100000;
     let new_data: &[u8;SIZE] = &[ 41 ; SIZE];
     let auth_data_size = get_auth_data_size(raw);
-    let pre = &raw[0 .. (1016 +auth_data_size)];
+    let pre = &raw[0 .. (1020 +auth_data_size)];
     let new_size = &((new_data.len()) as u32).to_le_bytes();
     let new = [pre,new_size,new_data].concat();
     return replace_signature_size(&new);
@@ -251,16 +257,16 @@ fn replace_cert_data_with_pem_wrapped_junk(raw: &[u8]) -> Vec<u8>{
     //let new_data = &get_bytes_from_file("./fixtures/fake_cert.txt");
 
     let auth_data_size = get_auth_data_size(raw);
-    let pre = &raw[0 .. (1016 +auth_data_size)];
+    let pre = &raw[0 .. (1020 +auth_data_size)];
     let new = [pre,new_data].concat();
     return replace_signature_size(&replace_cert_data_size(&new));
 }
 fn duplicate_cert_data(raw: &[u8], iterations:usize) -> Vec<u8>{
     let auth_data_size = get_auth_data_size(raw);
-    let post = &raw[1016+auth_data_size..];
+    let post = &raw[1020+auth_data_size..];
     let mut old: Vec<u8>;
     let mut new = raw;
-    for i in 0..iterations{
+    for _ in 0..iterations{
         old = [new,post].concat();
         new = &old;
     }
